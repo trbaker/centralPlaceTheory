@@ -155,6 +155,7 @@ textarea.summary{width:100%;font:inherit;font-size:.85rem;min-height:5.5rem;bord
     <canvas id="map" width="1200" height="800" aria-label="Hexagonal plain. Click a hex to build the selected facility."></canvas>
     <div id="arcmap" aria-label="ArcGIS map. Click a hex to build the selected facility."></div>
     <div id="arcStatus" class="status" style="display:none;margin-top:.4rem" aria-live="polite"></div>
+    <details id="arcLogBox" style="display:none;margin-top:.4rem"><summary class="status" style="cursor:pointer">Map log (open this if the map misbehaves, then copy the lines)</summary><pre id="arcLog" style="font-size:.75rem;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:.5rem;border-radius:6px;margin:.3rem 0 0"></pre></details>
     <div class="hover" id="hover"></div>
     <div class="hint" id="hint">Pick a facility on the right, then click a hex to build it.</div>
   </section>
@@ -455,7 +456,7 @@ function draw(){
       }
     }
   }
-  if(arc&&arc.ready)drawArc();
+  if(arc&&arc.ready){try{drawArc();}catch(e){arcLog('drawArc FAILED: '+errText(e));}}
 }
 
 // ---------- ArcGIS Online view (optional) ----------
@@ -475,14 +476,28 @@ function hexCornerLonLat(h,k){
 function clockwise(ring){let a=0;for(let i=0;i<ring.length-1;i++)a+=(ring[i+1][0]-ring[i][0])*(ring[i+1][1]+ring[i][1]);return a>0;}
 function hexRing(h){const ring=[0,1,2,3,4,5,0].map(k=>hexCornerLonLat(h,k));return clockwise(ring)?ring:ring.reverse();}
 function hexToRgb(hex){const p=parseInt(hex.slice(1),16);return [(p>>16)&255,(p>>8)&255,p&255];}
+function arcLog(msg){
+  const box=$('arcLogBox'),pre=$('arcLog');if(!box||!pre)return;
+  box.style.display='block';
+  const t=new Date().toISOString().slice(11,19);
+  pre.textContent+=`[${t}] ${msg}\n`;pre.scrollTop=pre.scrollHeight;
+  try{console.log('[Hexland map]',msg);}catch(e){}
+}
+function errText(e){if(!e)return 'unknown error';if(typeof e==='string')return e;return (e.name?e.name+': ':'')+(e.message||e.details&&JSON.stringify(e.details)||String(e));}
+window.addEventListener('unhandledrejection',ev=>{if(arc||chosenView==='arc')arcLog('Unhandled promise rejection: '+errText(ev.reason));});
+(function(){const orig=console.error;console.error=function(){try{if(arc||chosenView==='arc')arcLog('console.error: '+Array.from(arguments).map(a=>typeof a==='string'?a:errText(a)).join(' '));}catch(e){}return orig.apply(console,arguments);};})();
 function arcStatus(msg,isError){const el=$('arcStatus');el.textContent=msg||'';el.style.display=msg?'block':'none';el.style.color=isError?'var(--danger)':'var(--muted)';}
 
 function loadArcSDK(){
   return new Promise((resolve,reject)=>{
-    if(window.require&&window.require.toUrl){resolve();return;}
-    const css=document.createElement('link');css.rel='stylesheet';css.href=`https://js.arcgis.com/${ARCGIS_SDK_VERSION}/esri/themes/light/main.css`;document.head.appendChild(css);
+    if(window.require&&window.require.toUrl){arcLog('SDK already loaded');resolve();return;}
+    arcLog(`Page URL: ${location.href}`);
+    arcLog(`Loading SDK ${ARCGIS_SDK_VERSION} from js.arcgis.com…`);
+    const css=document.createElement('link');css.rel='stylesheet';css.href=`https://js.arcgis.com/${ARCGIS_SDK_VERSION}/esri/themes/light/main.css`;
+    css.onload=()=>arcLog('SDK stylesheet loaded');css.onerror=()=>arcLog('SDK stylesheet FAILED to load');
+    document.head.appendChild(css);
     const sc=document.createElement('script');sc.src=`https://js.arcgis.com/${ARCGIS_SDK_VERSION}/`;
-    sc.onload=()=>resolve();
+    sc.onload=()=>{arcLog('SDK script loaded; require is '+typeof window.require);resolve();};
     sc.onerror=()=>reject(new Error(`Could not download the ArcGIS SDK from js.arcgis.com/${ARCGIS_SDK_VERSION}. Check the internet connection or a content blocker.`));
     document.head.appendChild(sc);
   });
@@ -491,6 +506,7 @@ async function startArc(){
   arcStatus('Loading the ArcGIS Maps SDK…');
   await loadArcSDK();
   arcStatus('Building the map…');
+  arcLog('Requesting modules…');
   return new Promise((resolve,reject)=>{
     const timer=setTimeout(()=>reject(new Error('The map took too long to become ready (30 s). The basemap tiles may be blocked.')),30000);
     window.require(["esri/config","esri/Map","esri/views/MapView","esri/layers/GraphicsLayer","esri/Graphic",
@@ -498,7 +514,9 @@ async function startArc(){
                     "esri/symbols/SimpleFillSymbol","esri/symbols/SimpleLineSymbol","esri/symbols/SimpleMarkerSymbol","esri/symbols/TextSymbol"],
       (esriConfig,Map,MapView,GraphicsLayer,Graphic,Polygon,Polyline,Point,SimpleFillSymbol,SimpleLineSymbol,SimpleMarkerSymbol,TextSymbol)=>{
         try{
-          if(ARCGIS_API_KEY)esriConfig.apiKey=ARCGIS_API_KEY;
+          arcLog('Modules resolved. SDK version reported: '+(esriConfig.version||'?'));
+          if(ARCGIS_API_KEY){esriConfig.apiKey=ARCGIS_API_KEY;arcLog('Using API key, basemap '+ARCGIS_BASEMAP_WITH_KEY);}else arcLog('No API key; basemap osm');
+          const cont=document.getElementById('arcmap');arcLog(`Container size ${cont.clientWidth}×${cont.clientHeight}px, display ${getComputedStyle(cont).display}`);
           const wgs={wkid:4326};
           const hexLayer=new GraphicsLayer({title:'hexes'}),lineLayer=new GraphicsLayer({title:'market areas'}),facLayer=new GraphicsLayer({title:'facilities'});
           const map=new Map({basemap:ARCGIS_API_KEY?ARCGIS_BASEMAP_WITH_KEY:"osm",layers:[hexLayer,lineLayer,facLayer]});
@@ -506,16 +524,23 @@ async function startArc(){
           const hexGraphics=hexes.map(h=>new Graphic({
             geometry:new Polygon({rings:[hexRing(h)],spatialReference:wgs}),
             attributes:{hex:h.i},
-            symbol:new SimpleFillSymbol({color:[40,50,60,0.15],outline:{color:[255,255,255,0.7],width:0.6}})
+            symbol:new SimpleFillSymbol({color:[109,182,63,0.3],outline:{color:[42,26,10,0.85],width:1.2}})
           }));
           hexLayer.addMany(hexGraphics);
+          arcLog(`Created ${hexGraphics.length} hex graphics; first ring starts at ${JSON.stringify(hexRing(hexes[0])[0].map(v=>+v.toFixed(4)))}`);
+          try{
+            let logged=false;
+            view.watch('updating',v=>{if(!v&&!logged){logged=true;arcLog('View finished its first update (tiles and graphics drawn)');}});
+            map.basemap.load().then(()=>arcLog('Basemap loaded: '+(map.basemap.title||map.basemap.id||'ok'))).catch(e=>arcLog('Basemap FAILED: '+errText(e)));
+          }catch(e){arcLog('Instrumentation skipped: '+errText(e));}
           arc={ready:false,view,Graphic,Polyline,Point,SimpleFillSymbol,SimpleLineSymbol,SimpleMarkerSymbol,TextSymbol,wgs,hexLayer,lineLayer,facLayer,hexGraphics};
           view.when(()=>{
             clearTimeout(timer);
             arc.ready=true;
             arcStatus('');
-            view.goTo(hexGraphics,{animate:false}).catch(()=>{});
-            drawArc();
+            arcLog(`View ready. Spatial reference wkid ${view.spatialReference&&view.spatialReference.wkid}, zoom ${view.zoom}, centre ${view.center&&[+view.center.longitude.toFixed(3),+view.center.latitude.toFixed(3)]}`);
+            view.goTo(hexGraphics,{animate:false}).then(()=>arcLog('Zoomed to hex grid, zoom '+(+view.zoom.toFixed(2)))).catch(e=>arcLog('goTo failed: '+errText(e)));
+            try{drawArc();arcLog(`Drew ${hexLayer.graphics.length} hexes, ${lineLayer.graphics.length} boundary lines, ${facLayer.graphics.length} facility markers`);}catch(e){arcLog('drawArc FAILED: '+errText(e));}
             view.on("click",ev=>{
               view.hitTest(ev,{include:hexLayer}).then(r=>{
                 const hit=(r.results||[]).find(x=>x.graphic&&x.graphic.attributes&&x.graphic.attributes.hex!==undefined);
@@ -532,9 +557,9 @@ async function startArc(){
             });
             view.on("pointer-leave",()=>showHover(null));
             resolve();
-          }).catch(err=>{clearTimeout(timer);reject(err||new Error('The view failed to initialise.'));});
-        }catch(e){clearTimeout(timer);reject(e);}
-      });
+          }).catch(err=>{clearTimeout(timer);arcLog('view.when rejected: '+errText(err));reject(err||new Error('The view failed to initialise.'));});
+        }catch(e){clearTimeout(timer);arcLog('Setup threw: '+errText(e));reject(e);}
+      },err=>{clearTimeout(timer);arcLog('Module load failed: '+errText(err));reject(err);});
   });
 }
 function stopArc(){
@@ -548,10 +573,10 @@ function drawArc(){
   const selRgb=sel?hexToRgb(cssColor[sel.cssVar]):null;
   const maxPop=state.mode==='real'?230:100,minPop=state.mode==='real'?30:100;
   for(const h of hexes){
-    const t=maxPop===minPop?0.15:0.05+0.45*(pop[h.i]-minPop)/(maxPop-minPop);
-    let color=[40,50,60,t];
-    if(selRes&&selRes.serve[h.i]!==null){const a=[0.35,0.48,0.6][selRes.serve[h.i]%3];color=[selRgb[0],selRgb[1],selRgb[2],a];}
-    hexGraphics[h.i].symbol=new SimpleFillSymbol({color,outline:{color:[255,255,255,0.7],width:0.6}});
+    const t=maxPop===minPop?0.3:0.15+0.5*(pop[h.i]-minPop)/(maxPop-minPop);
+    let color=[109,182,63,t];
+    if(selRes&&selRes.serve[h.i]!==null){const a=[0.4,0.52,0.64][selRes.serve[h.i]%3];color=[selRgb[0],selRgb[1],selRgb[2],a];}
+    hexGraphics[h.i].symbol=new SimpleFillSymbol({color,outline:{color:[42,26,10,0.85],width:1.2}});
   }
   lineLayer.removeAll();
   if(selRes){
@@ -706,7 +731,7 @@ $('startBtn').addEventListener('click',async()=>{
     try{
       await startArc();
     }catch(e){
-      console.error('ArcGIS view failed:',e);
+      arcLog('Falling back to the abstract plain: '+errText(e));
       document.querySelector('.mapwrap').classList.remove('arc');stopArc();layout();
       const msg=(e&&(e.message||e.name))||String(e);
       arcStatus('ArcGIS map unavailable: '+msg+' Showing the abstract plain instead.',true);
