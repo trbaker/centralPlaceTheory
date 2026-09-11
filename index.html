@@ -283,6 +283,13 @@ textarea.summary{width:100%;font:inherit;font-size:.85rem;min-height:5.5rem;bord
 // (topographic, imagery, etc.). With no key the map uses the OpenStreetMap basemap, which needs none.
 const ARCGIS_API_KEY="";
 const ARCGIS_BASEMAP_WITH_KEY="arcgis/topographic";
+// Optional: an ArcGIS Online web map item ID (from its URL: .../home/item.html?id=XXXX). If set, that web map
+// is used as the basemap and layers, so you can build the background in your own AGO account. Needs to be shared publicly.
+const ARCGIS_WEBMAP_ID="";
+// Basemaps tried in order when there is no key and no web map. "topo", "satellite", "streets" etc. are Esri's
+// ArcGIS Online basemaps that work without a key; "osm" is the OpenStreetMap fallback.
+const ARCGIS_BASEMAPS=["topo","osm"];
+const ARCGIS_TOGGLE_BASEMAP="satellite";
 const ARCGIS_SDK_VERSION="4.32";
 // Where the hex plain sits on the real map (centre of the grid) and how big a hex is.
 const MAP_CENTER={lon:-100.87,lat:37.97};   // High Plains near Garden City, Kansas: about as isotropic as land gets
@@ -509,17 +516,26 @@ async function startArc(){
   arcLog('Requesting modules…');
   return new Promise((resolve,reject)=>{
     const timer=setTimeout(()=>reject(new Error('The map took too long to become ready (30 s). The basemap tiles may be blocked.')),30000);
-    window.require(["esri/config","esri/Map","esri/views/MapView","esri/layers/GraphicsLayer","esri/Graphic",
+    window.require(["esri/config","esri/Map","esri/WebMap","esri/Basemap","esri/views/MapView","esri/layers/GraphicsLayer","esri/Graphic",
                     "esri/geometry/Polygon","esri/geometry/Polyline","esri/geometry/Point",
-                    "esri/symbols/SimpleFillSymbol","esri/symbols/SimpleLineSymbol","esri/symbols/SimpleMarkerSymbol","esri/symbols/TextSymbol"],
-      (esriConfig,Map,MapView,GraphicsLayer,Graphic,Polygon,Polyline,Point,SimpleFillSymbol,SimpleLineSymbol,SimpleMarkerSymbol,TextSymbol)=>{
+                    "esri/symbols/SimpleFillSymbol","esri/symbols/SimpleLineSymbol","esri/symbols/SimpleMarkerSymbol","esri/symbols/TextSymbol","esri/widgets/BasemapToggle"],
+      (esriConfig,Map,WebMap,Basemap,MapView,GraphicsLayer,Graphic,Polygon,Polyline,Point,SimpleFillSymbol,SimpleLineSymbol,SimpleMarkerSymbol,TextSymbol,BasemapToggle)=>{
         try{
           arcLog('Modules resolved. SDK version reported: '+(esriConfig.version||'?'));
-          if(ARCGIS_API_KEY){esriConfig.apiKey=ARCGIS_API_KEY;arcLog('Using API key, basemap '+ARCGIS_BASEMAP_WITH_KEY);}else arcLog('No API key; basemap osm');
           const cont=document.getElementById('arcmap');arcLog(`Container size ${cont.clientWidth}×${cont.clientHeight}px, display ${getComputedStyle(cont).display}`);
           const wgs={wkid:4326};
           const hexLayer=new GraphicsLayer({title:'hexes'}),lineLayer=new GraphicsLayer({title:'market areas'}),facLayer=new GraphicsLayer({title:'facilities'});
-          const map=new Map({basemap:ARCGIS_API_KEY?ARCGIS_BASEMAP_WITH_KEY:"osm",layers:[hexLayer,lineLayer,facLayer]});
+          let map,basemapQueue=[];
+          if(ARCGIS_API_KEY){esriConfig.apiKey=ARCGIS_API_KEY;}
+          if(ARCGIS_WEBMAP_ID){
+            arcLog('Using ArcGIS Online web map '+ARCGIS_WEBMAP_ID);
+            map=new WebMap({portalItem:{id:ARCGIS_WEBMAP_ID}});
+            map.addMany([hexLayer,lineLayer,facLayer]);
+          }else{
+            basemapQueue=ARCGIS_API_KEY?[ARCGIS_BASEMAP_WITH_KEY,...ARCGIS_BASEMAPS]:[...ARCGIS_BASEMAPS];
+            arcLog((ARCGIS_API_KEY?'Using API key. ':'No API key. ')+'Basemaps to try: '+basemapQueue.join(', '));
+            map=new Map({basemap:basemapQueue.shift(),layers:[hexLayer,lineLayer,facLayer]});
+          }
           const view=new MapView({container:"arcmap",map,center:[MAP_CENTER.lon,MAP_CENTER.lat],zoom:10,constraints:{rotationEnabled:false},popupEnabled:false});
           const hexGraphics=hexes.map(h=>new Graphic({
             geometry:new Polygon({rings:[hexRing(h)],spatialReference:wgs}),
@@ -531,7 +547,19 @@ async function startArc(){
           try{
             let logged=false;
             view.watch('updating',v=>{if(!v&&!logged){logged=true;arcLog('View finished its first update (tiles and graphics drawn)');}});
-            map.basemap.load().then(()=>arcLog('Basemap loaded: '+(map.basemap.title||map.basemap.id||'ok'))).catch(e=>arcLog('Basemap FAILED: '+errText(e)));
+            const tryBasemap=()=>{
+              const bm=map.basemap;if(!bm){arcLog('No basemap object on the map');return;}
+              bm.load().then(()=>{
+                // a basemap can "load" yet have a base layer that failed; check the first base layer too
+                const bl=bm.baseLayers&&bm.baseLayers.getItemAt(0);
+                const p=bl&&bl.load?bl.load():Promise.resolve();
+                return p.then(()=>arcLog('Basemap loaded: '+(bm.title||bm.id||'ok')+(bl?(' ('+(bl.title||bl.url||bl.type)+')'):'')));
+              }).catch(e=>{
+                arcLog('Basemap "'+(bm.title||bm.id||'?')+'" FAILED: '+errText(e));
+                if(basemapQueue.length){const next=basemapQueue.shift();arcLog('Trying basemap '+next);map.basemap=next;tryBasemap();}
+              });
+            };
+            tryBasemap();
           }catch(e){arcLog('Instrumentation skipped: '+errText(e));}
           arc={ready:false,view,Graphic,Polyline,Point,SimpleFillSymbol,SimpleLineSymbol,SimpleMarkerSymbol,TextSymbol,wgs,hexLayer,lineLayer,facLayer,hexGraphics};
           view.when(()=>{
@@ -541,11 +569,15 @@ async function startArc(){
             arcLog(`View ready. Spatial reference wkid ${view.spatialReference&&view.spatialReference.wkid}, zoom ${view.zoom}, centre ${view.center&&[+view.center.longitude.toFixed(3),+view.center.latitude.toFixed(3)]}`);
             view.goTo(hexGraphics,{animate:false}).then(()=>arcLog('Zoomed to hex grid, zoom '+(+view.zoom.toFixed(2)))).catch(e=>arcLog('goTo failed: '+errText(e)));
             try{drawArc();arcLog(`Drew ${hexLayer.graphics.length} hexes, ${lineLayer.graphics.length} boundary lines, ${facLayer.graphics.length} facility markers`);}catch(e){arcLog('drawArc FAILED: '+errText(e));}
+            if(!ARCGIS_WEBMAP_ID&&ARCGIS_TOGGLE_BASEMAP){
+              try{view.ui.add(new BasemapToggle({view,nextBasemap:ARCGIS_TOGGLE_BASEMAP}),"bottom-right");}catch(e){arcLog('Basemap toggle skipped: '+errText(e));}
+            }
             view.on("click",ev=>{
               view.hitTest(ev,{include:hexLayer}).then(r=>{
                 const hit=(r.results||[]).find(x=>x.graphic&&x.graphic.attributes&&x.graphic.attributes.hex!==undefined);
-                if(hit)place(hexes[hit.graphic.attributes.hex]);
-              }).catch(()=>{});
+                if(hit){arcLog('Click on hex '+hit.graphic.attributes.hex+' with tool '+state.tool);place(hexes[hit.graphic.attributes.hex]);}
+                else arcLog('Click hit no hex ('+(r.results||[]).length+' results)');
+              }).catch(e=>arcLog('hitTest failed: '+errText(e)));
             });
             let hoverBusy=false;
             view.on("pointer-move",ev=>{
