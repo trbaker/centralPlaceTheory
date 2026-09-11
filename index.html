@@ -62,6 +62,16 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:1.2rem;padding:1
 .mapwrap{position:relative;background:var(--panel);border:2px solid var(--gold-deep);border-radius:14px;padding:.6rem}
 canvas#map{display:block;width:100%;height:auto;touch-action:manipulation;border-radius:8px}
 #arcmap{display:none;width:100%;height:600px;border-radius:8px;overflow:hidden}
+/* Minimal layout rules the ArcGIS view needs, duplicated here in case the SDK stylesheet is blocked */
+#arcmap.esri-view{position:relative;overflow:hidden;background:#dfe9f2}
+#arcmap .esri-view-root{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;overflow:hidden}
+#arcmap .esri-view-surface{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;overflow:hidden;z-index:0}
+#arcmap .esri-view-surface canvas,#arcmap .esri-display-object{position:absolute;top:0;left:0;width:100%;height:100%;display:block}
+#arcmap .esri-ui{position:absolute;top:0;right:0;bottom:0;left:0;z-index:1;pointer-events:none}
+#arcmap .esri-ui *{pointer-events:auto}
+#arcmap .esri-ui-corner{position:absolute;display:flex;flex-direction:column;gap:8px;padding:15px}
+#arcmap .esri-ui-top-left{top:0;left:0}#arcmap .esri-ui-top-right{top:0;right:0}#arcmap .esri-ui-bottom-left{bottom:0;left:0}#arcmap .esri-ui-bottom-right{bottom:0;right:0}
+#arcmap .esri-attribution{position:absolute;bottom:0;left:0;right:0;font-size:12px;background:rgba(255,255,255,.8);padding:2px 6px;z-index:2;pointer-events:auto}
 .mapwrap.arc canvas#map{position:absolute;left:0;top:0;visibility:hidden;pointer-events:none}
 .mapwrap.arc #arcmap{display:block}
 @media (max-width:900px){#arcmap{height:420px}}
@@ -546,7 +556,20 @@ async function startArc(){
           arcLog(`Created ${hexGraphics.length} hex graphics; first ring starts at ${JSON.stringify(hexRing(hexes[0])[0].map(v=>+v.toFixed(4)))}`);
           try{
             let logged=false;
-            view.watch('updating',v=>{if(!v&&!logged){logged=true;arcLog('View finished its first update (tiles and graphics drawn)');}});
+            view.watch('updating',v=>{if(!v&&!logged){logged=true;arcLog('View finished its first update (tiles and graphics drawn)');
+              try{
+                const cssApplied=getComputedStyle(cont).position==='relative';
+                arcLog('SDK stylesheet applied to container: '+(cssApplied?'yes':'NO'));
+                const cv=cont.querySelector('canvas');
+                if(cv){const r=cv.getBoundingClientRect();const cs=getComputedStyle(cv);arcLog(`Map canvas: attribute size ${cv.width}×${cv.height}, on-screen ${Math.round(r.width)}×${Math.round(r.height)}px at (${Math.round(r.left)},${Math.round(r.top)}), display ${cs.display}, visibility ${cs.visibility}, opacity ${cs.opacity}`);}
+                else arcLog('No canvas element found inside the map container');
+                const root=cont.querySelector('.esri-view-root');if(root){const rr=root.getBoundingClientRect();arcLog(`esri-view-root on-screen ${Math.round(rr.width)}×${Math.round(rr.height)}px`);}
+                const el=cont;let covered=null;const r2=el.getBoundingClientRect();const topEl=document.elementFromPoint(r2.left+r2.width/2,r2.top+r2.height/2);
+                if(topEl&&!el.contains(topEl))covered=topEl.tagName+(topEl.id?'#'+topEl.id:'')+(topEl.className&&typeof topEl.className==='string'?'.'+topEl.className.split(' ').join('.'):'');
+                arcLog('Element at map centre: '+(covered?('COVERED by '+covered):'the map itself'));
+              }catch(e){arcLog('Geometry check failed: '+errText(e));}
+            }});
+            try{const t=document.createElement('canvas');arcLog('WebGL available: '+(!!(t.getContext('webgl2')||t.getContext('webgl'))));}catch(e){}
             const tryBasemap=()=>{
               const bm=map.basemap;if(!bm){arcLog('No basemap object on the map');return;}
               bm.load().then(()=>{
