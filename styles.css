@@ -1,0 +1,145 @@
+/* Hexland — a central place theory game
+   styles.css: theme tokens (from the logo), layout, dialogs, map, result card.
+   Colours are CSS variables on :root with dark-mode overrides. */
+
+:root{
+  /* Palette drawn from the Hexland logo: gold lettering, dark outline, sky, grass, river */
+  --gold:#F3B62A; --gold-deep:#D8931A; --outline:#2A1A0A; --sky:#3A8FE0; --grass:#6DB63F; --river:#2FA9E4; --cream:#FFF6D6;
+  --bg:#E4EFF9; --panel:#FFFDF6; --ink:#2A1A0A; --muted:#6A5A3E; --line:#E3D5AE;
+  --hex0:#DDEBC9; --hex1:#6FAE47; --hexline:#F6FBEE;
+  --bakery:#E39A12; --grocery:#1E7FD0; --hospital:#C4384E; --danger:#C62828;
+  --btn:#F3B62A; --btntext:#2A1A0A; --focus:#1E7FD0;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#101B30; --panel:#182642; --ink:#FFF3CF; --muted:#B7AA88; --line:#2E3F63;
+    --hex0:#25402B; --hex1:#6FB446; --hexline:#0D1626;
+    --bakery:#F5C04A; --grocery:#4FA8F0; --hospital:#F06A80; --danger:#FF7B7B;
+    --btn:#F3B62A; --btntext:#2A1A0A; --focus:#7FC0FF;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#101B30; --panel:#182642; --ink:#FFF3CF; --muted:#B7AA88; --line:#2E3F63;
+  --hex0:#25402B; --hex1:#6FB446; --hexline:#0D1626;
+  --bakery:#F5C04A; --grocery:#4FA8F0; --hospital:#F06A80; --danger:#FF7B7B;
+  --btn:#F3B62A; --btntext:#2A1A0A; --focus:#7FC0FF;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
+h1,h2,h3{font-family:"Bricolage Grotesque","Atkinson Hyperlegible",system-ui,sans-serif;line-height:1.05;margin:0;letter-spacing:-.01em}
+h1{font-size:clamp(1.6rem,3.2vw,2.3rem);font-weight:800}
+h2{font-size:1.35rem;font-weight:700}
+h3{font-size:1.05rem;font-weight:700}
+p{margin:0 0 .75em}
+button{font:inherit;cursor:pointer;color:inherit}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.sr{position:absolute;left:-9999px}
+
+header{display:flex;align-items:center;gap:1rem;padding:.6rem 1.2rem;border-bottom:3px solid var(--gold);background:var(--panel);flex-wrap:wrap}
+header .title{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap}
+header .logo{height:80px;width:auto;display:block}
+header .title h1{position:absolute;left:-9999px}
+@media (max-width:560px){header .logo{height:48px}}
+header .title small{color:var(--muted);font-size:.95rem}
+header .spacer{flex:1}
+.ghost{background:transparent;border:1.5px solid var(--gold-deep);border-radius:999px;padding:.4rem .9rem;font-weight:700}
+.ghost:hover{background:var(--gold);color:var(--outline)}
+.primary{background:var(--btn);color:var(--btntext);border:2px solid var(--outline);border-radius:999px;padding:.6rem 1.1rem;font-weight:800;box-shadow:0 3px 0 var(--outline)}
+.primary:hover{background:var(--gold-deep)}
+.primary:disabled{opacity:.4;cursor:not-allowed}
+
+main{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:1.2rem;padding:1.2rem;max-width:1400px;margin:0 auto}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+
+.mapwrap{position:relative;background:var(--panel);border:2px solid var(--gold-deep);border-radius:14px;padding:.6rem}
+canvas#map{display:block;width:100%;height:auto;touch-action:manipulation;border-radius:8px}
+#arcmap{display:none;width:100%;height:600px;border-radius:8px;overflow:hidden}
+/* Minimal layout rules the ArcGIS view needs, duplicated here in case the SDK stylesheet is blocked */
+#arcmap.esri-view{position:relative;overflow:hidden;background:#dfe9f2}
+#arcmap .esri-view-root{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;overflow:hidden}
+#arcmap .esri-view-surface{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;overflow:hidden;z-index:0}
+#arcmap .esri-view-surface canvas,#arcmap .esri-display-object{position:absolute;top:0;left:0;width:100%;height:100%;display:block}
+#arcmap .esri-ui{position:absolute;top:0;right:0;bottom:0;left:0;z-index:1;pointer-events:none}
+#arcmap .esri-ui-inner-container,#arcmap .esri-ui-corner{pointer-events:none}
+#arcmap .esri-ui .esri-component,#arcmap .esri-ui .esri-widget,#arcmap .esri-ui button{pointer-events:auto}
+#arcmap .esri-ui-corner{position:absolute;display:flex;flex-direction:column;gap:8px;padding:15px}
+#arcmap .esri-ui-top-left{top:0;left:0}#arcmap .esri-ui-top-right{top:0;right:0}#arcmap .esri-ui-bottom-left{bottom:0;left:0}#arcmap .esri-ui-bottom-right{bottom:0;right:0}
+#arcmap .esri-attribution{position:absolute;bottom:0;left:0;right:0;font-size:12px;background:rgba(255,255,255,.8);padding:2px 6px;z-index:2;pointer-events:auto}
+#arcmap .esri-ui-corner{pointer-events:none}
+.mapwrap.arc canvas#map{position:absolute;left:0;top:0;visibility:hidden;pointer-events:none}
+.mapwrap.arc #arcmap{display:block}
+@media (max-width:900px){#arcmap{height:420px}}
+.hint{margin-top:.6rem;padding:.6rem .8rem;border-left:4px solid var(--gold);background:var(--bg);border-radius:6px;font-size:.95rem;min-height:2.6rem}
+.hint.warn{border-left-color:var(--danger)}
+.hint.good{border-left-color:var(--grocery)}
+.hover{position:absolute;top:.9rem;right:.9rem;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.35rem .6rem;font-size:.85rem;pointer-events:none;display:none;max-width:220px}
+
+aside{display:flex;flex-direction:column;gap:1rem}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1rem}
+.budget{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem}
+.budget .amt{font-family:"Bricolage Grotesque",sans-serif;font-size:1.9rem;font-weight:800}
+.bar{height:8px;background:var(--bg);border-radius:4px;overflow:hidden;margin-top:.4rem;border:1px solid var(--line)}
+.bar i{display:block;height:100%;background:var(--gold-deep)}
+
+.tools{display:grid;gap:.5rem;margin-top:.6rem}
+.tool{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.7rem;text-align:left;background:var(--panel);border:1.5px solid var(--line);border-radius:10px;padding:.55rem .7rem}
+.tool[aria-pressed="true"]{border-color:var(--gold-deep);box-shadow:inset 0 0 0 2px var(--gold);background:var(--cream)}
+:root[data-theme="dark"] .tool[aria-pressed="true"]{background:#2A3A22}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tool[aria-pressed="true"]{background:#2A3A22}}
+.tool .sw{width:22px;height:22px;border-radius:50%;flex:none}
+.tool .name{font-weight:700}
+.tool .meta{font-size:.82rem;color:var(--muted)}
+.tool .cost{font-weight:700}
+.tool.bull .sw{border-radius:4px;background:repeating-linear-gradient(45deg,var(--danger) 0 4px,transparent 4px 8px)}
+.keys{font-size:.8rem;color:var(--muted);margin:.5rem 0 0}
+
+.cov{display:grid;gap:.7rem;margin-top:.5rem}
+.cov .row{display:grid;grid-template-columns:1fr auto;gap:.3rem .6rem;font-size:.92rem}
+.cov .row .lbl{display:flex;align-items:center;gap:.5rem;font-weight:700}
+.cov .row .lbl .sw{width:12px;height:12px;border-radius:50%}
+.cov .row .bar{grid-column:1/-1;margin-top:0}
+.cov .row .sub{grid-column:1/-1;font-size:.82rem;color:var(--muted)}
+.cov .row .sub .bad{color:var(--danger);font-weight:700}
+.goal{font-size:.85rem;color:var(--muted);margin:.6rem 0 0}
+
+.overlay{position:fixed;inset:0;background:rgba(16,27,48,.7);display:none;align-items:center;justify-content:center;padding:1rem;z-index:20}
+.overlay.open{display:flex}
+.modal{background:var(--panel);color:var(--ink);border-radius:16px;max-width:760px;width:100%;max-height:92vh;overflow:auto;padding:1.4rem;border:3px solid var(--gold)}
+.modal .biglogo{display:block;width:min(300px,70%);height:auto;margin:-.4rem auto .6rem}
+.modal .top{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.8rem}
+.field{display:grid;gap:.3rem;margin:.8rem 0}
+.field label{font-weight:700}
+.field input,.field select{font:inherit;padding:.55rem .7rem;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+@media (max-width:560px){.modes{grid-template-columns:1fr}}
+.mode{border:1.5px solid var(--line);border-radius:10px;padding:.7rem;text-align:left;background:var(--panel)}
+.mode[aria-pressed="true"]{border-color:var(--gold-deep);box-shadow:inset 0 0 0 2px var(--gold)}
+.mode b{display:block;margin-bottom:.2rem}
+.mode span{font-size:.88rem;color:var(--muted)}
+.actions{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1rem;align-items:center}
+.status{font-size:.9rem;color:var(--muted)}
+
+.verdict{font-family:"Bricolage Grotesque",sans-serif;font-size:clamp(2.2rem,6vw,3.4rem);font-weight:800;line-height:1}
+.verdict.win{color:var(--grass)} .verdict.loss{color:var(--hospital)}
+.reasons{margin:.6rem 0 0;padding-left:1.1rem}
+.reasons li{margin:.2rem 0}
+canvas#cardCanvas{width:100%;height:auto;border:1px solid var(--line);border-radius:8px;margin-top:.8rem;background:#FFFDF6}
+code.vc{font-family:ui-monospace,Menlo,Consolas,monospace;background:var(--bg);padding:.1rem .4rem;border-radius:4px}
+textarea.summary{width:100%;font:inherit;font-size:.85rem;min-height:5.5rem;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);padding:.5rem}
+
+.learn h3{margin-top:1rem}
+.learn p,.learn li{max-width:66ch}
+.learn ul{padding-left:1.2rem}
+.learn table{border-collapse:collapse;font-size:.92rem;margin:.4rem 0 .8rem}
+.learn td,.learn th{border-bottom:1px solid var(--line);padding:.35rem .6rem;text-align:left}
+.learn .why{display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+.learn .why svg{width:150px;height:auto}
+.check{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:.5rem;align-items:end}
+.check input{font:inherit;padding:.45rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:100%}
+@media (max-width:560px){.check{grid-template-columns:1fr 1fr}}
+@media (prefers-reduced-motion:no-preference){.tool,.mode{transition:border-color .15s}}
+.credit{position:fixed;left:.9rem;bottom:.6rem;font-size:.8rem;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:.25rem .7rem;z-index:5}
+.credit a{color:var(--ink);font-weight:700;text-decoration:none;border-bottom:1.5px solid var(--gold)}
+.credit a:hover{color:var(--gold-deep)}
+main{padding-bottom:3rem}
