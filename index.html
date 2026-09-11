@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hexland: a central place theory game</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F1F3EF; --panel:#FFFFFF; --ink:#1B2430; --muted:#5E6B78; --line:#D6DBD3;
+  --hex0:#E6EAE3; --hex1:#B3BDB0; --hexline:#F7F8F5;
+  --bakery:#D0901A; --grocery:#1F8A7A; --hospital:#B8325A; --danger:#C62828;
+  --btn:#1B2430; --btntext:#FFFFFF; --focus:#2C6FD1;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141A1F; --panel:#1D252C; --ink:#ECEFE9; --muted:#9AA6B0; --line:#2F3A42;
+    --hex0:#2A343C; --hex1:#4C5A66; --hexline:#151B20;
+    --bakery:#E8A833; --grocery:#3BB39F; --hospital:#E05A85; --danger:#F06060;
+    --btn:#ECEFE9; --btntext:#141A1F; --focus:#7FB0FF;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141A1F; --panel:#1D252C; --ink:#ECEFE9; --muted:#9AA6B0; --line:#2F3A42;
+  --hex0:#2A343C; --hex1:#4C5A66; --hexline:#151B20;
+  --bakery:#E8A833; --grocery:#3BB39F; --hospital:#E05A85; --danger:#F06060;
+  --btn:#ECEFE9; --btntext:#141A1F; --focus:#7FB0FF;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
+h1,h2,h3{font-family:"Bricolage Grotesque","Atkinson Hyperlegible",system-ui,sans-serif;line-height:1.05;margin:0;letter-spacing:-.01em}
+h1{font-size:clamp(1.6rem,3.2vw,2.3rem);font-weight:800}
+h2{font-size:1.35rem;font-weight:700}
+h3{font-size:1.05rem;font-weight:700}
+p{margin:0 0 .75em}
+button{font:inherit;cursor:pointer;color:inherit}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.sr{position:absolute;left:-9999px}
+
+header{display:flex;align-items:center;gap:1rem;padding:.8rem 1.2rem;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header .title{display:flex;align-items:baseline;gap:.7rem;flex-wrap:wrap}
+header .title small{color:var(--muted);font-size:.95rem}
+header .spacer{flex:1}
+.ghost{background:transparent;border:1px solid var(--line);border-radius:999px;padding:.4rem .9rem}
+.ghost:hover{border-color:var(--ink)}
+.primary{background:var(--btn);color:var(--btntext);border:0;border-radius:999px;padding:.6rem 1.1rem;font-weight:700}
+.primary:disabled{opacity:.4;cursor:not-allowed}
+
+main{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:1.2rem;padding:1.2rem;max-width:1400px;margin:0 auto}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+
+.mapwrap{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:.6rem}
+canvas#map{display:block;width:100%;height:auto;touch-action:manipulation;border-radius:8px}
+#arcmap{display:none;width:100%;height:600px;border-radius:8px;overflow:hidden}
+.mapwrap.arc canvas#map{position:absolute;left:0;top:0;visibility:hidden;pointer-events:none}
+.mapwrap.arc #arcmap{display:block}
+@media (max-width:900px){#arcmap{height:420px}}
+.hint{margin-top:.6rem;padding:.6rem .8rem;border-left:4px solid var(--bakery);background:var(--bg);border-radius:6px;font-size:.95rem;min-height:2.6rem}
+.hint.warn{border-left-color:var(--danger)}
+.hint.good{border-left-color:var(--grocery)}
+.hover{position:absolute;top:.9rem;right:.9rem;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.35rem .6rem;font-size:.85rem;pointer-events:none;display:none;max-width:220px}
+
+aside{display:flex;flex-direction:column;gap:1rem}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1rem}
+.budget{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem}
+.budget .amt{font-family:"Bricolage Grotesque",sans-serif;font-size:1.9rem;font-weight:800}
+.bar{height:8px;background:var(--bg);border-radius:4px;overflow:hidden;margin-top:.4rem;border:1px solid var(--line)}
+.bar i{display:block;height:100%;background:var(--ink)}
+
+.tools{display:grid;gap:.5rem;margin-top:.6rem}
+.tool{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.7rem;text-align:left;background:var(--panel);border:1.5px solid var(--line);border-radius:10px;padding:.55rem .7rem}
+.tool[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.tool .sw{width:22px;height:22px;border-radius:50%;flex:none}
+.tool .name{font-weight:700}
+.tool .meta{font-size:.82rem;color:var(--muted)}
+.tool .cost{font-weight:700}
+.tool.bull .sw{border-radius:4px;background:repeating-linear-gradient(45deg,var(--danger) 0 4px,transparent 4px 8px)}
+.keys{font-size:.8rem;color:var(--muted);margin:.5rem 0 0}
+
+.cov{display:grid;gap:.7rem;margin-top:.5rem}
+.cov .row{display:grid;grid-template-columns:1fr auto;gap:.3rem .6rem;font-size:.92rem}
+.cov .row .lbl{display:flex;align-items:center;gap:.5rem;font-weight:700}
+.cov .row .lbl .sw{width:12px;height:12px;border-radius:50%}
+.cov .row .bar{grid-column:1/-1;margin-top:0}
+.cov .row .sub{grid-column:1/-1;font-size:.82rem;color:var(--muted)}
+.cov .row .sub .bad{color:var(--danger);font-weight:700}
+.goal{font-size:.85rem;color:var(--muted);margin:.6rem 0 0}
+
+.overlay{position:fixed;inset:0;background:rgba(15,20,25,.55);display:none;align-items:center;justify-content:center;padding:1rem;z-index:20}
+.overlay.open{display:flex}
+.modal{background:var(--panel);color:var(--ink);border-radius:16px;max-width:760px;width:100%;max-height:92vh;overflow:auto;padding:1.4rem;border:1px solid var(--line)}
+.modal .top{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.8rem}
+.field{display:grid;gap:.3rem;margin:.8rem 0}
+.field label{font-weight:700}
+.field input,.field select{font:inherit;padding:.55rem .7rem;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+@media (max-width:560px){.modes{grid-template-columns:1fr}}
+.mode{border:1.5px solid var(--line);border-radius:10px;padding:.7rem;text-align:left;background:var(--panel)}
+.mode[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.mode b{display:block;margin-bottom:.2rem}
+.mode span{font-size:.88rem;color:var(--muted)}
+.actions{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1rem;align-items:center}
+.status{font-size:.9rem;color:var(--muted)}
+
+.verdict{font-family:"Bricolage Grotesque",sans-serif;font-size:clamp(2.2rem,6vw,3.4rem);font-weight:800;line-height:1}
+.verdict.win{color:var(--grocery)} .verdict.loss{color:var(--hospital)}
+.reasons{margin:.6rem 0 0;padding-left:1.1rem}
+.reasons li{margin:.2rem 0}
+canvas#cardCanvas{width:100%;height:auto;border:1px solid var(--line);border-radius:8px;margin-top:.8rem;background:#fff}
+code.vc{font-family:ui-monospace,Menlo,Consolas,monospace;background:var(--bg);padding:.1rem .4rem;border-radius:4px}
+textarea.summary{width:100%;font:inherit;font-size:.85rem;min-height:5.5rem;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);padding:.5rem}
+
+.learn h3{margin-top:1rem}
+.learn p,.learn li{max-width:66ch}
+.learn ul{padding-left:1.2rem}
+.learn table{border-collapse:collapse;font-size:.92rem;margin:.4rem 0 .8rem}
+.learn td,.learn th{border-bottom:1px solid var(--line);padding:.35rem .6rem;text-align:left}
+.learn .why{display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+.learn .why svg{width:150px;height:auto}
+.check{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:.5rem;align-items:end}
+.check input{font:inherit;padding:.45rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:100%}
+@media (max-width:560px){.check{grid-template-columns:1fr 1fr}}
+@media (prefers-reduced-motion:no-preference){.tool,.mode{transition:border-color .15s}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title">
+    <h1>Hexland</h1>
+    <small>Build a settlement hierarchy on an isotropic plain</small>
+  </div>
+  <div class="spacer"></div>
+  <span class="status" id="who"></span>
+  <button class="ghost" id="learnBtn">How the theory works</button>
+  <button class="ghost" id="restartBtn">New game</button>
+</header>
+
+<main>
+  <section class="mapwrap" aria-label="Game map">
+    <canvas id="map" width="1200" height="800" aria-label="Hexagonal plain. Click a hex to build the selected facility."></canvas>
+    <div id="arcmap" aria-label="ArcGIS map. Click a hex to build the selected facility."></div>
+    <div id="arcStatus" class="status" style="display:none;margin-top:.4rem" aria-live="polite"></div>
+    <div class="hover" id="hover"></div>
+    <div class="hint" id="hint">Pick a facility on the right, then click a hex to build it.</div>
+  </section>
+
+  <aside>
+    <div class="card">
+      <div class="budget"><span>Cash left</span><span class="amt" id="cash">$180,000</span></div>
+      <div class="bar"><i id="cashbar" style="width:100%"></i></div>
+      <div class="tools" id="tools"></div>
+      <p class="keys">Keys: 1 bakery, 2 grocery, 3 hospital, X bulldoze. Bulldozing refunds half the cost.</p>
+    </div>
+
+    <div class="card">
+      <h2>Who is served?</h2>
+      <div class="cov" id="cov"></div>
+      <p class="goal">To win: serve at least 95% of people with every good, with no facility below its threshold, before the cash runs out. Extra credit for a proper hierarchy.</p>
+      <div class="actions"><button class="primary" id="submitBtn">Open for inspection</button></div>
+    </div>
+  </aside>
+</main>
+
+<!-- Start screen -->
+<div class="overlay open" id="startOverlay" role="dialog" aria-modal="true" aria-labelledby="startTitle">
+  <div class="modal">
+    <h2 id="startTitle">You are the planner of Hexland</h2>
+    <p>Every hexagon holds a small population. Your job is to give all of them access to three goods, from a corner bakery to a regional hospital, without going broke. The map will show you each facility's market area as you build.</p>
+    <div class="field">
+      <label for="nameIn">Your name (goes on your result card)</label>
+      <input id="nameIn" placeholder="First and last name" autocomplete="name">
+    </div>
+    <div class="field">
+      <label>Landscape</label>
+      <div class="modes" id="modes">
+        <button class="mode" data-mode="iso" aria-pressed="true"><b>Isotropic plain</b><span>Christaller's assumption: flat land, people spread evenly, 100 per hex. Cleanest way to see the hexagons.</span></button>
+        <button class="mode" data-mode="real" aria-pressed="false"><b>River valley</b><span>People cluster along a river and thin out toward the hills. See how the tidy pattern bends.</span></button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Map style</label>
+      <div class="modes" id="views">
+        <button class="mode" data-view="canvas" aria-pressed="true"><b>Abstract hex plain</b><span>Works offline. The clearest view of market areas.</span></button>
+        <button class="mode" data-view="arc" aria-pressed="false"><b>ArcGIS Online basemap</b><span>Lays the same hex grid over a real map of the High Plains in western Kansas (needs internet).</span></button>
+      </div>
+    </div>
+    <div class="actions"><button class="primary" id="startBtn">Start planning</button><span class="status" id="startStatus"></span></div>
+  </div>
+</div>
+
+<!-- Learn screen -->
+<div class="overlay" id="learnOverlay" role="dialog" aria-modal="true" aria-labelledby="learnTitle">
+  <div class="modal learn">
+    <div class="top"><h2 id="learnTitle">Central place theory, in the game's terms</h2><button class="ghost" data-close="learnOverlay">Close</button></div>
+    <p>Walter Christaller (1933) asked a simple question: if land were perfectly flat and people were spread out evenly, where would towns form, and why are some bigger than others? His answer is a hierarchy of <b>central places</b>, each serving the surrounding area with goods and services.</p>
+
+    <h3>Two numbers decide everything</h3>
+    <ul>
+      <li><b>Threshold</b>: the minimum number of customers a business needs to survive. In the game, a facility with fewer customers than its threshold fails.</li>
+      <li><b>Range</b>: the farthest people will travel for that good. In the game, range is measured in hexes.</li>
+    </ul>
+    <table>
+      <tr><th>Good</th><th>Order</th><th>Range</th><th>Threshold</th><th>Real-world cousins</th></tr>
+      <tr><td>Bakery</td><td>Low</td><td>1 hex</td><td>400 people</td><td>Gas station, convenience store</td></tr>
+      <tr><td>Grocery store</td><td>Middle</td><td>2 hexes</td><td>1,000 people</td><td>Pharmacy, high school</td></tr>
+      <tr><td>Hospital</td><td>High</td><td>4 hexes</td><td>2,800 people</td><td>University, stadium, airport</td></tr>
+    </table>
+    <p>Low-order goods are bought often and nobody travels far for them, so bakeries are many and close together. High-order goods are bought rarely, so a hospital needs a huge threshold population and can draw from a wide range. Fewer of them, farther apart.</p>
+
+    <h3>Why hexagons?</h3>
+    <div class="why">
+      <svg viewBox="0 0 150 70" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="20" cy="35" r="14"/><circle cx="44" cy="35" r="14"/><circle cx="32" cy="14" r="14"/>
+          <path d="M92 21l12-7 12 7v14l-12 7-12-7zM116 21l12-7 12 7v14l-12 7-12-7zM104 42l12-7 12 7v14l-12 7-12-7z"/>
+        </g>
+      </svg>
+      <p>A market area is really a circle with radius equal to the range. Circles either leave gaps or overlap, and overlapping means competing. Hexagons are the closest shape to a circle that tiles a plane with no gaps. Watch the boundaries the game draws between neighboring facilities: they settle into hexagons on their own.</p>
+    </div>
+
+    <h3>The hierarchy</h3>
+    <p>A place that offers a high-order good also offers every lower-order good. A city has hospitals, but it has bakeries too; a hamlet has only the bakery. So higher-order centers are <b>nested</b> inside the market areas of the order above them. The game's hierarchy score checks whether your groceries sit at bakeries and your hospitals sit at groceries. Christaller described several nesting ratios; the best known is K=3, where each higher-order center serves its own area plus a third of each of the six neighbors.</p>
+
+    <h3>What the theory assumes (and the river valley breaks)</h3>
+    <ul>
+      <li>An isotropic plain: flat, featureless, equally easy to cross in every direction.</li>
+      <li>Population and wealth spread evenly.</li>
+      <li>People are rational and go to the nearest place that sells what they want.</li>
+      <li>Transport costs the same in all directions.</li>
+    </ul>
+    <p>Switch to the river valley and the pattern warps: dense areas support more, closer facilities and sparse hills can't reach thresholds at all. That gap between the model and the map is exactly what geographers use the theory for.</p>
+
+    <h3>For teachers: verify a result card</h3>
+    <p>Each card carries a code computed from the name, date, landscape, verdict, and score. Enter what the student's card shows to regenerate it.</p>
+    <div class="check">
+      <label>Name<input id="vName"></label>
+      <label>Date on card<input id="vDate" placeholder="2026-09-10"></label>
+      <label>Score<input id="vScore" placeholder="82"></label>
+      <button class="ghost" id="vBtn">Check</button>
+    </div>
+    <p class="status" id="vOut" style="margin-top:.6rem"></p>
+  </div>
+</div>
+
+<!-- Result screen -->
+<div class="overlay" id="resultOverlay" role="dialog" aria-modal="true" aria-labelledby="verdict">
+  <div class="modal">
+    <div class="top"><div class="verdict" id="verdict">Win</div><button class="ghost" data-close="resultOverlay">Back to map</button></div>
+    <div id="resultBody"></div>
+    <canvas id="cardCanvas" width="1000" height="640"></canvas>
+    <div class="actions">
+      <button class="primary" id="saveBtn">Save result card (PNG)</button>
+      <button class="ghost" id="copyBtn">Copy text summary</button>
+      <span class="status" id="saveStatus">Take a screenshot of this card and send it to your teacher.</span>
+    </div>
+    <textarea class="summary" id="summaryText" readonly aria-label="Text summary of your result"></textarea>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+// ---------- Configuration ----------
+// Optional: paste an ArcGIS Location Platform / ArcGIS Online API key here to use Esri basemaps
+// (topographic, imagery, etc.). With no key the map uses the OpenStreetMap basemap, which needs none.
+const ARCGIS_API_KEY="";
+const ARCGIS_BASEMAP_WITH_KEY="arcgis/topographic";
+const ARCGIS_SDK_VERSION="4.32";
+// Where the hex plain sits on the real map (centre of the grid) and how big a hex is.
+const MAP_CENTER={lon:-100.87,lat:37.97};   // High Plains near Garden City, Kansas: about as isotropic as land gets
+const HEX_RADIUS_KM=2.5;
+
+// ---------- Game definition ----------
+const COLS=15, ROWS=11, BUDGET=180000, COVER_GOAL=0.95;
+const GOODS=[
+  {id:'bakery',  name:'Bakery',        order:'Low-order',  range:1, threshold:400,  cost:1000,  cssVar:'--bakery',  key:'1'},
+  {id:'grocery', name:'Grocery store', order:'Middle-order',range:2, threshold:1000, cost:4000,  cssVar:'--grocery', key:'2'},
+  {id:'hospital',name:'Hospital',      order:'High-order', range:4, threshold:2800, cost:15000, cssVar:'--hospital',key:'3'}
+];
+const GI=Object.fromEntries(GOODS.map((g,i)=>[g.id,i]));
+
+// ---------- State ----------
+let hexes=[], byKey=new Map(), pop=[], totalPop=0;
+let state=null; // {name, mode, cash, fac:{bakery:Set,grocery:Set,hospital:Set}, tool, nextId}
+let sim=null;   // computed allocation
+let cssColor={}, size=30, originX=0, originY=0, dpr=1;
+let arc=null; // ArcGIS state when the basemap view is active
+let chosenView='canvas';
+
+// ---------- Hex geometry (pointy-top, odd-r offset) ----------
+function axial(c,r){return [c-((r-(r&1))>>1), r];}
+function cube(c,r){const [q,rr]=axial(c,r);return [q,-q-rr,rr];}
+function hexDist(a,b){const A=cube(a.c,a.r),B=cube(b.c,b.r);return Math.max(Math.abs(A[0]-B[0]),Math.abs(A[1]-B[1]),Math.abs(A[2]-B[2]));}
+const DIRS=[[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]]; // E,SE,SW,W,NW,NE
+
+function buildGrid(mode){
+  hexes=[];byKey.clear();pop=[];totalPop=0;
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    const [q,rr]=axial(c,r);
+    const h={i:hexes.length,c,r,q,rr,key:q+','+rr};
+    hexes.push(h);byKey.set(h.key,h);
+  }
+  for(const h of hexes){
+    h.nb=DIRS.map(([dq,dr])=>byKey.get((h.q+dq)+','+(h.rr+dr))||null);
+    let p=100;
+    if(mode==='real'){
+      // A river running diagonally, dense valley floor, thin hills in the NE and SW corners
+      const x=h.c+0.5*(h.r&1), y=h.r;
+      const riverX=3+ (y/(ROWS-1))*9 + Math.sin(y*0.9)*1.2;
+      const d=Math.abs(x-riverX);
+      const valley=Math.exp(-(d*d)/6);
+      const hills=Math.exp(-(((x-13)**2+(y-1)**2))/9)+Math.exp(-(((x-1)**2+(y-9)**2))/9);
+      p=Math.round((45+165*valley-35*hills)/5)*5;
+      p=Math.max(30,Math.min(230,p));
+    }
+    pop[h.i]=p;totalPop+=p;
+  }
+}
+
+// ---------- Simulation ----------
+function simulate(){
+  const res={goods:{},hier:{}};
+  for(const g of GOODS){
+    const facs=[...state.fac[g.id].values()];
+    const serve=new Array(hexes.length).fill(null); // primary facility id (lowest id among nearest ties) or null
+    const cust={};for(const f of facs)cust[f.id]=0;
+    let servedPop=0;
+    for(const h of hexes){
+      let best=Infinity,ties=[];
+      for(const f of facs){
+        const d=hexDist(h,f);
+        if(d>g.range)continue;
+        if(d<best){best=d;ties=[f];}else if(d===best)ties.push(f);
+      }
+      if(ties.length){
+        servedPop+=pop[h.i];
+        for(const f of ties)cust[f.id]+=pop[h.i]/ties.length;
+        serve[h.i]=ties.reduce((a,b)=>a.id<b.id?a:b).id;
+      }
+    }
+    const failing=facs.filter(f=>cust[f.id]<g.threshold);
+    res.goods[g.id]={facs,serve,cust,coverage:servedPop/totalPop,failing};
+  }
+  // hierarchy: higher-order facility located where all lower-order ones also exist
+  function at(gid,c,r){for(const f of state.fac[gid].values())if(f.c===c&&f.r===r)return true;return false;}
+  let hTotal=0,hOk=0;
+  for(const f of state.fac.grocery.values()){hTotal++;if(at('bakery',f.c,f.r))hOk++;}
+  for(const f of state.fac.hospital.values()){hTotal++;if(at('bakery',f.c,f.r)&&at('grocery',f.c,f.r))hOk++;}
+  res.hier={total:hTotal,ok:hOk,pct:hTotal?hOk/hTotal:0};
+  sim=res;
+}
+
+function facilityAt(gid,h){for(const f of state.fac[gid].values())if(f.c===h.c&&f.r===h.r)return f;return null;}
+
+// ---------- Rendering ----------
+const canvas=document.getElementById('map'), ctx=canvas.getContext('2d');
+function readColors(){
+  const cs=getComputedStyle(document.documentElement);
+  for(const k of ['--bg','--panel','--ink','--muted','--line','--hex0','--hex1','--hexline','--bakery','--grocery','--hospital','--danger'])cssColor[k]=cs.getPropertyValue(k).trim();
+}
+function layout(){
+  const wrap=canvas.parentElement;
+  const cssW=Math.max(280,wrap.clientWidth-12);
+  const pad=8;
+  size=(cssW-2*pad)/(Math.sqrt(3)*(COLS+0.5));
+  const cssH=size*(1.5*(ROWS-1)+2)+2*pad;
+  dpr=Math.min(2,window.devicePixelRatio||1);
+  canvas.style.height=cssH+'px';
+  canvas.width=Math.round(cssW*dpr);canvas.height=Math.round(cssH*dpr);
+  originX=pad+size*Math.sqrt(3)/2;originY=pad+size;
+  for(const h of hexes){h.x=originX+size*Math.sqrt(3)*(h.c+0.5*(h.r&1));h.y=originY+size*1.5*h.r;}
+  draw();
+}
+function corner(h,k,s){const a=Math.PI/180*(60*k-30);return [h.x+s*Math.cos(a),h.y+s*Math.sin(a)];}
+function hexPath(h,s){ctx.beginPath();for(let k=0;k<6;k++){const [x,y]=corner(h,k,s);k?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.closePath();}
+function mix(a,b,t){ // hex colors
+  const pa=parseInt(a.slice(1),16),pb=parseInt(b.slice(1),16);
+  const r=Math.round(((pa>>16)&255)*(1-t)+((pb>>16)&255)*t),g=Math.round(((pa>>8)&255)*(1-t)+((pb>>8)&255)*t),bl=Math.round((pa&255)*(1-t)+(pb&255)*t);
+  return `rgb(${r},${g},${bl})`;
+}
+function rgba(hex,a){const p=parseInt(hex.slice(1),16);return `rgba(${(p>>16)&255},${(p>>8)&255},${p&255},${a})`;}
+
+function draw(){
+  if(!state)return;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const sel=GOODS[GI[state.tool]]||null;
+  const selRes=sel?sim.goods[sel.id]:null;
+  const selColor=sel?cssColor[sel.cssVar]:null;
+  const maxPop=state.mode==='real'?230:100, minPop=state.mode==='real'?30:100;
+  // base hexes
+  for(const h of hexes){
+    const t=maxPop===minPop?0.35:(pop[h.i]-minPop)/(maxPop-minPop);
+    ctx.fillStyle=mix(cssColor['--hex0'],cssColor['--hex1'],t*0.9);
+    hexPath(h,size);ctx.fill();
+    if(selRes&&selRes.serve[h.i]!==null){
+      const fid=selRes.serve[h.i];
+      const shade=[0.22,0.34,0.46][fid%3];
+      ctx.fillStyle=rgba(selColor,shade);ctx.fill();
+    }
+    ctx.strokeStyle=cssColor['--hexline'];ctx.lineWidth=1;ctx.stroke();
+  }
+  // market-area boundaries for selected good
+  if(selRes){
+    ctx.strokeStyle=selColor;ctx.lineWidth=Math.max(2,size*0.11);ctx.lineCap='round';
+    for(const h of hexes){
+      const a=selRes.serve[h.i];if(a===null)continue;
+      for(let k=0;k<6;k++){
+        const n=h.nb[k];
+        const b=n?selRes.serve[n.i]:null;
+        if(b===a)continue;
+        if(n&&b!==null&&n.i<h.i)continue; // draw shared edge once
+        const [x1,y1]=corner(h,k,size),[x2,y2]=corner(h,(k+1)%6,size);
+        ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+      }
+    }
+  }
+  // facilities, largest (highest order) first so stacked ones stay visible
+  for(const g of [...GOODS].reverse()){
+    const r=sim.goods[g.id];const isSel=sel&&sel.id===g.id;
+    for(const f of r.facs){
+      const h=hexes[f.hex];
+      const failing=r.cust[f.id]<g.threshold;
+      const base=[0.22,0.3,0.38][GI[g.id]]*size;
+      const rad=isSel?base*1.15:base;
+      ctx.beginPath();
+      if(g.id==='bakery'){ctx.arc(h.x,h.y,rad,0,Math.PI*2);}
+      else if(g.id==='grocery'){ctx.rect(h.x-rad,h.y-rad,rad*2,rad*2);}
+      else {for(let k=0;k<6;k++){const a=Math.PI/180*(60*k);const x=h.x+rad*1.1*Math.cos(a),y=h.y+rad*1.1*Math.sin(a);k?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.closePath();}
+      ctx.fillStyle=cssColor[g.cssVar];ctx.fill();
+      ctx.strokeStyle=cssColor['--panel'];ctx.lineWidth=Math.max(1.5,size*0.06);ctx.stroke();
+      if(g.id==='hospital'){ctx.strokeStyle=cssColor['--panel'];ctx.lineWidth=Math.max(2,rad*0.32);ctx.beginPath();ctx.moveTo(h.x-rad*0.55,h.y);ctx.lineTo(h.x+rad*0.55,h.y);ctx.moveTo(h.x,h.y-rad*0.55);ctx.lineTo(h.x,h.y+rad*0.55);ctx.stroke();}
+      if(failing){
+        ctx.setLineDash([size*0.12,size*0.1]);ctx.strokeStyle=cssColor['--danger'];ctx.lineWidth=Math.max(2,size*0.09);
+        ctx.beginPath();ctx.arc(h.x,h.y,rad*1.55+2,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+        ctx.fillStyle=cssColor['--danger'];ctx.font=`700 ${Math.max(10,size*0.5)}px "Bricolage Grotesque",sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText('!',h.x+rad*1.7,h.y-rad*1.5);
+      }
+    }
+  }
+  if(arc&&arc.ready)drawArc();
+}
+
+// ---------- ArcGIS Online view (optional) ----------
+function kmToLon(km,lat){return km/(111.32*Math.cos(lat*Math.PI/180));}
+function kmToLat(km){return km/110.574;}
+function hexLonLat(h){
+  const cx=(COLS-1)/2+0.25, cy=(ROWS-1)/2;
+  const dx=(h.c+0.5*(h.r&1)-cx)*Math.sqrt(3)*HEX_RADIUS_KM;
+  const dy=-(h.r-cy)*1.5*HEX_RADIUS_KM;   // north is up
+  return [MAP_CENTER.lon+kmToLon(dx,MAP_CENTER.lat), MAP_CENTER.lat+kmToLat(dy)];
+}
+function hexCornerLonLat(h,k){
+  const [lon,lat]=hexLonLat(h);
+  const a=Math.PI/180*(60*k-30);
+  return [lon+kmToLon(HEX_RADIUS_KM*Math.cos(a),MAP_CENTER.lat), lat-kmToLat(HEX_RADIUS_KM*Math.sin(a))];
+}
+function clockwise(ring){let a=0;for(let i=0;i<ring.length-1;i++)a+=(ring[i+1][0]-ring[i][0])*(ring[i+1][1]+ring[i][1]);return a>0;}
+function hexRing(h){const ring=[0,1,2,3,4,5,0].map(k=>hexCornerLonLat(h,k));return clockwise(ring)?ring:ring.reverse();}
+function hexToRgb(hex){const p=parseInt(hex.slice(1),16);return [(p>>16)&255,(p>>8)&255,p&255];}
+function arcStatus(msg,isError){const el=$('arcStatus');el.textContent=msg||'';el.style.display=msg?'block':'none';el.style.color=isError?'var(--danger)':'var(--muted)';}
+
+function loadArcSDK(){
+  return new Promise((resolve,reject)=>{
+    if(window.require&&window.require.toUrl){resolve();return;}
+    const css=document.createElement('link');css.rel='stylesheet';css.href=`https://js.arcgis.com/${ARCGIS_SDK_VERSION}/esri/themes/light/main.css`;document.head.appendChild(css);
+    const sc=document.createElement('script');sc.src=`https://js.arcgis.com/${ARCGIS_SDK_VERSION}/`;
+    sc.onload=()=>resolve();
+    sc.onerror=()=>reject(new Error(`Could not download the ArcGIS SDK from js.arcgis.com/${ARCGIS_SDK_VERSION}. Check the internet connection or a content blocker.`));
+    document.head.appendChild(sc);
+  });
+}
+async function startArc(){
+  arcStatus('Loading the ArcGIS Maps SDK…');
+  await loadArcSDK();
+  arcStatus('Building the map…');
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error('The map took too long to become ready (30 s). The basemap tiles may be blocked.')),30000);
+    window.require(["esri/config","esri/Map","esri/views/MapView","esri/layers/GraphicsLayer","esri/Graphic",
+                    "esri/geometry/Polygon","esri/geometry/Polyline","esri/geometry/Point",
+                    "esri/symbols/SimpleFillSymbol","esri/symbols/SimpleLineSymbol","esri/symbols/SimpleMarkerSymbol","esri/symbols/TextSymbol"],
+      (esriConfig,Map,MapView,GraphicsLayer,Graphic,Polygon,Polyline,Point,SimpleFillSymbol,SimpleLineSymbol,SimpleMarkerSymbol,TextSymbol)=>{
+        try{
+          if(ARCGIS_API_KEY)esriConfig.apiKey=ARCGIS_API_KEY;
+          const wgs={wkid:4326};
+          const hexLayer=new GraphicsLayer({title:'hexes'}),lineLayer=new GraphicsLayer({title:'market areas'}),facLayer=new GraphicsLayer({title:'facilities'});
+          const map=new Map({basemap:ARCGIS_API_KEY?ARCGIS_BASEMAP_WITH_KEY:"osm",layers:[hexLayer,lineLayer,facLayer]});
+          const view=new MapView({container:"arcmap",map,center:[MAP_CENTER.lon,MAP_CENTER.lat],zoom:10,constraints:{rotationEnabled:false},popupEnabled:false});
+          const hexGraphics=hexes.map(h=>new Graphic({
+            geometry:new Polygon({rings:[hexRing(h)],spatialReference:wgs}),
+            attributes:{hex:h.i},
+            symbol:new SimpleFillSymbol({color:[40,50,60,0.15],outline:{color:[255,255,255,0.7],width:0.6}})
+          }));
+          hexLayer.addMany(hexGraphics);
+          arc={ready:false,view,Graphic,Polyline,Point,SimpleFillSymbol,SimpleLineSymbol,SimpleMarkerSymbol,TextSymbol,wgs,hexLayer,lineLayer,facLayer,hexGraphics};
+          view.when(()=>{
+            clearTimeout(timer);
+            arc.ready=true;
+            arcStatus('');
+            view.goTo(hexGraphics,{animate:false}).catch(()=>{});
+            drawArc();
+            view.on("click",ev=>{
+              view.hitTest(ev,{include:hexLayer}).then(r=>{
+                const hit=(r.results||[]).find(x=>x.graphic&&x.graphic.attributes&&x.graphic.attributes.hex!==undefined);
+                if(hit)place(hexes[hit.graphic.attributes.hex]);
+              }).catch(()=>{});
+            });
+            let hoverBusy=false;
+            view.on("pointer-move",ev=>{
+              if(hoverBusy)return;hoverBusy=true;
+              view.hitTest(ev,{include:hexLayer}).then(r=>{
+                const hit=(r.results||[]).find(x=>x.graphic&&x.graphic.attributes&&x.graphic.attributes.hex!==undefined);
+                showHover(hit?hexes[hit.graphic.attributes.hex]:null);
+              }).catch(()=>{}).then(()=>{hoverBusy=false;});
+            });
+            view.on("pointer-leave",()=>showHover(null));
+            resolve();
+          }).catch(err=>{clearTimeout(timer);reject(err||new Error('The view failed to initialise.'));});
+        }catch(e){clearTimeout(timer);reject(e);}
+      });
+  });
+}
+function stopArc(){
+  if(arc&&arc.view){try{arc.view.destroy();}catch(e){}}
+  arc=null;arcStatus('');
+}
+function drawArc(){
+  const {Graphic,Polyline,Point,SimpleFillSymbol,SimpleLineSymbol,SimpleMarkerSymbol,TextSymbol,wgs,hexGraphics,lineLayer,facLayer}=arc;
+  const sel=GOODS[GI[state.tool]]||null;
+  const selRes=sel?sim.goods[sel.id]:null;
+  const selRgb=sel?hexToRgb(cssColor[sel.cssVar]):null;
+  const maxPop=state.mode==='real'?230:100,minPop=state.mode==='real'?30:100;
+  for(const h of hexes){
+    const t=maxPop===minPop?0.15:0.05+0.45*(pop[h.i]-minPop)/(maxPop-minPop);
+    let color=[40,50,60,t];
+    if(selRes&&selRes.serve[h.i]!==null){const a=[0.35,0.48,0.6][selRes.serve[h.i]%3];color=[selRgb[0],selRgb[1],selRgb[2],a];}
+    hexGraphics[h.i].symbol=new SimpleFillSymbol({color,outline:{color:[255,255,255,0.7],width:0.6}});
+  }
+  lineLayer.removeAll();
+  if(selRes){
+    const lines=[];
+    const lineSym=new SimpleLineSymbol({color:[selRgb[0],selRgb[1],selRgb[2],1],width:3,cap:"round"});
+    for(const h of hexes){
+      const a=selRes.serve[h.i];if(a===null)continue;
+      for(let k=0;k<6;k++){
+        const n=h.nb[k];const b=n?selRes.serve[n.i]:null;
+        if(b===a)continue;if(n&&b!==null&&n.i<h.i)continue;
+        lines.push(new Graphic({geometry:new Polyline({paths:[[hexCornerLonLat(h,k),hexCornerLonLat(h,(k+1)%6)]],spatialReference:wgs}),symbol:lineSym}));
+      }
+    }
+    lineLayer.addMany(lines);
+  }
+  facLayer.removeAll();
+  const marks=[];
+  const styles={bakery:"circle",grocery:"square",hospital:"diamond"};
+  for(const g of [...GOODS].reverse()){
+    const r=sim.goods[g.id];const isSel=sel&&sel.id===g.id;
+    const rgb=hexToRgb(cssColor[g.cssVar]);
+    const base=[9,12,16][GI[g.id]]*(isSel?1.2:1);
+    for(const f of r.facs){
+      const [lon,lat]=hexLonLat(hexes[f.hex]);
+      const pt=new Point({longitude:lon,latitude:lat,spatialReference:wgs});
+      const failing=r.cust[f.id]<g.threshold;
+      if(failing){
+        marks.push(new Graphic({geometry:pt,symbol:new SimpleMarkerSymbol({style:"circle",size:base*2.2,color:[0,0,0,0],outline:{color:[198,40,40,1],width:2}})}));
+        marks.push(new Graphic({geometry:pt,symbol:new TextSymbol({text:"!",color:[198,40,40,1],xoffset:base*1.3,yoffset:base*0.9,font:{size:14,weight:"bold"}})}));
+      }
+      marks.push(new Graphic({geometry:pt,symbol:new SimpleMarkerSymbol({style:styles[g.id],size:base,color:[rgb[0],rgb[1],rgb[2],1],outline:{color:[255,255,255,1],width:1.5}})}));
+      if(g.id==='hospital')marks.push(new Graphic({geometry:pt,symbol:new SimpleMarkerSymbol({style:"cross",size:base*0.6,color:[0,0,0,0],outline:{color:[255,255,255,1],width:2}})}));
+    }
+  }
+  facLayer.addMany(marks);
+}
+
+// ---------- UI ----------
+const $=id=>document.getElementById(id);
+function money(n){return '$'+Math.round(n).toLocaleString('en-US');}
+function pct(x){return Math.round(x*100)+'%';}
+
+function buildTools(){
+  const el=$('tools');el.innerHTML='';
+  for(const g of GOODS){
+    const b=document.createElement('button');b.className='tool';b.dataset.tool=g.id;b.setAttribute('aria-pressed','false');
+    b.innerHTML=`<span class="sw" style="background:var(${g.cssVar})"></span><span><span class="name">${g.name}</span><br><span class="meta">${g.order}. Range ${g.range} hex${g.range>1?'es':''}, threshold ${g.threshold.toLocaleString('en-US')}</span></span><span class="cost">${money(g.cost)}</span>`;
+    b.addEventListener('click',()=>setTool(g.id));el.appendChild(b);
+  }
+  const x=document.createElement('button');x.className='tool bull';x.dataset.tool='bulldoze';x.setAttribute('aria-pressed','false');
+  x.innerHTML=`<span class="sw"></span><span><span class="name">Bulldoze</span><br><span class="meta">Remove a facility, get half the cost back</span></span><span class="cost"></span>`;
+  x.addEventListener('click',()=>setTool('bulldoze'));el.appendChild(x);
+}
+function setTool(t){state.tool=t;document.querySelectorAll('.tool').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));draw();updateHint();}
+
+function updatePanel(){
+  $('cash').textContent=money(state.cash);
+  $('cashbar').style.width=(100*state.cash/BUDGET)+'%';
+  const cov=$('cov');cov.innerHTML='';
+  for(const g of GOODS){
+    const r=sim.goods[g.id];
+    const row=document.createElement('div');row.className='row';
+    const fails=r.failing.length;
+    row.innerHTML=`<span class="lbl"><span class="sw" style="background:var(${g.cssVar})"></span>${g.name}</span><span>${pct(r.coverage)} served</span>
+      <div class="bar"><i style="width:${Math.min(100,r.coverage*100)}%;background:var(${g.cssVar})"></i></div>
+      <span class="sub">${r.facs.length} built${fails?` · <span class="bad">${fails} below threshold</span>`:''}</span>`;
+    cov.appendChild(row);
+  }
+  const hrow=document.createElement('div');hrow.className='row';
+  hrow.innerHTML=`<span class="lbl">Hierarchy</span><span>${sim.hier.total?pct(sim.hier.pct):'–'}</span><span class="sub">Higher-order facilities placed where all lower-order goods already exist: ${sim.hier.ok} of ${sim.hier.total}</span>`;
+  cov.appendChild(hrow);
+  const meta=state.mode==='real'?'River valley':'Isotropic plain';
+  $('who').textContent=(state.name?state.name+' · ':'')+meta+' · '+totalPop.toLocaleString('en-US')+' people';
+}
+
+let lastHintKey='';
+function updateHint(text,cls,key){
+  const el=$('hint');
+  if(text){el.textContent=text;el.className='hint'+(cls?' '+cls:'');return;}
+  // contextual defaults
+  const g=GOODS[GI[state.tool]];
+  const built=GOODS.reduce((n,g)=>n+state.fac[g.id].size,0);
+  let msg='',c='';
+  const anyFail=GOODS.find(g=>sim.goods[g.id].failing.length);
+  if(anyFail){const f=sim.goods[anyFail.id].failing[0];msg=`A ${anyFail.name.toLowerCase()} has only ${Math.round(sim.goods[anyFail.id].cust[f.id]).toLocaleString('en-US')} customers, under its threshold of ${anyFail.threshold.toLocaleString('en-US')}. Too many of the same good too close together split the customers. Bulldoze one or spread them out.`;c='warn';}
+  else if(built===0)msg='Pick a facility on the right, then click a hex to build it. Try a hospital first and watch how far its market area reaches.';
+  else if(state.tool==='bulldoze')msg='Click a facility to remove it. You get half its cost back.';
+  else if(g&&g.id!=='bakery'&&sim.hier.total&&sim.hier.pct<0.5)msg='In Christaller\'s hierarchy a town with a hospital also has groceries and bakeries. Stacking higher-order goods on lower-order places raises your hierarchy score.';
+  else if(g){const cov=sim.goods[g.id].coverage;msg=cov>=COVER_GOAL?`${g.name} coverage is ${pct(cov)}. Every extra one now costs money without helping.`:`${g.name}: ${pct(cov)} of people are within ${g.range} hex${g.range>1?'es':''} of one. Look for gaps in the shaded market areas.`;c=cov>=COVER_GOAL?'good':'';}
+  el.textContent=msg;el.className='hint'+(c?' '+c:'');
+}
+
+function hexAtPointer(ev){
+  const rect=canvas.getBoundingClientRect();
+  const x=ev.clientX-rect.left,y=ev.clientY-rect.top;
+  let best=null,bd=Infinity;
+  for(const h of hexes){const d=(h.x-x)**2+(h.y-y)**2;if(d<bd){bd=d;best=h;}}
+  return (best&&bd<=size*size)?best:null;
+}
+
+function place(h){
+  if(!state||state.done)return;
+  if(state.tool==='bulldoze'){
+    // remove highest-order facility on this hex first
+    for(const g of [...GOODS].reverse()){
+      const f=facilityAt(g.id,h);
+      if(f){state.fac[g.id].delete(f.id);state.cash+=g.cost/2;afterChange();updateHint(`Removed the ${g.name.toLowerCase()}. Refunded ${money(g.cost/2)}.`);return;}
+    }
+    updateHint('Nothing to bulldoze there.','warn');return;
+  }
+  const g=GOODS[GI[state.tool]];if(!g)return;
+  if(facilityAt(g.id,h)){updateHint(`There is already a ${g.name.toLowerCase()} on that hex.`,'warn');return;}
+  if(state.cash<g.cost){updateHint(`Not enough cash for a ${g.name.toLowerCase()} (${money(g.cost)}). Bulldoze something or open for inspection.`,'warn');return;}
+  const f={id:state.nextId++,c:h.c,r:h.r,hex:h.i};
+  state.fac[g.id].set(f.id,f);state.cash-=g.cost;
+  afterChange();
+  const cust=Math.round(sim.goods[g.id].cust[f.id]);
+  if(cust<g.threshold)updateHint(`That ${g.name.toLowerCase()} draws only ${cust.toLocaleString('en-US')} customers, below its threshold of ${g.threshold.toLocaleString('en-US')}. It will fail unless the crowding is fixed.`,'warn');
+  else updateHint();
+}
+function afterChange(){simulate();updatePanel();draw();}
+
+canvas.addEventListener('click',ev=>{const h=hexAtPointer(ev);if(h)place(h);});
+function showHover(h){
+  const hv=$('hover');
+  if(!h||!state){hv.style.display='none';return;}
+  const parts=[`Population ${pop[h.i]}`];
+  for(const g of GOODS){const r=sim.goods[g.id];const f=facilityAt(g.id,h);
+    if(f)parts.push(`${g.name}: ${Math.round(r.cust[f.id]).toLocaleString('en-US')} customers`);
+    else parts.push(`${g.name}: ${r.serve[h.i]!==null?'served':'no access'}`);}
+  hv.innerHTML=parts.join('<br>');hv.style.display='block';
+}
+canvas.addEventListener('mousemove',ev=>showHover(hexAtPointer(ev)));
+canvas.addEventListener('mouseleave',()=>showHover(null));
+document.addEventListener('keydown',ev=>{
+  if(!state||document.querySelector('.overlay.open'))return;
+  const k=ev.key.toLowerCase();
+  const g=GOODS.find(g=>g.key===k);if(g)setTool(g.id);else if(k==='x')setTool('bulldoze');
+});
+
+// ---------- Start / restart ----------
+let chosenMode='iso';
+$('modes').addEventListener('click',ev=>{const b=ev.target.closest('.mode');if(!b)return;chosenMode=b.dataset.mode;document.querySelectorAll('.mode').forEach(m=>m.setAttribute('aria-pressed',String(m===b)));});
+$('views').addEventListener('click',ev=>{const b=ev.target.closest('.mode');if(!b)return;chosenView=b.dataset.view;document.querySelectorAll('#views .mode').forEach(m=>m.setAttribute('aria-pressed',String(m===b)));});
+$('startBtn').addEventListener('click',async()=>{
+  const name=$('nameIn').value.trim();
+  stopArc();document.querySelector('.mapwrap').classList.remove('arc');
+  startGame(name,chosenMode);
+  $('startOverlay').classList.remove('open');
+  if(chosenView==='arc'){
+    document.querySelector('.mapwrap').classList.add('arc');
+    try{
+      await startArc();
+    }catch(e){
+      console.error('ArcGIS view failed:',e);
+      document.querySelector('.mapwrap').classList.remove('arc');stopArc();layout();
+      const msg=(e&&(e.message||e.name))||String(e);
+      arcStatus('ArcGIS map unavailable: '+msg+' Showing the abstract plain instead.',true);
+    }
+  }
+});
+window.addEventListener('error',ev=>{if(arc||chosenView==='arc'){const el=$('arcStatus');if(el&&!el.textContent)arcStatus('Script error: '+ev.message,true);}});
+function startGame(name,mode){
+  readColors();buildGrid(mode);
+  state={name,mode,cash:BUDGET,fac:{bakery:new Map(),grocery:new Map(),hospital:new Map()},tool:'hospital',nextId:1,done:false};
+  buildTools();simulate();updatePanel();layout();setTool('hospital');updateHint();
+}
+window.addEventListener('resize',()=>{if(state)layout();});
+const mq=window.matchMedia('(prefers-color-scheme: dark)');
+(mq.addEventListener?mq.addEventListener('change',()=>{readColors();draw();}):mq.addListener(()=>{readColors();draw();}));
+
+// ---------- Scoring, verdict, result card ----------
+function scoreGame(){
+  const covs=GOODS.map(g=>sim.goods[g.id].coverage);
+  const failing=GOODS.reduce((n,g)=>n+sim.goods[g.id].failing.length,0);
+  const allCovered=covs.every(c=>c>=COVER_GOAL);
+  const win=allCovered&&failing===0;
+  const avgCov=covs.reduce((a,b)=>a+b,0)/covs.length;
+  const covPts=30*Math.min(1,avgCov/COVER_GOAL);
+  const effPts=40*Math.max(0,Math.min(1,state.cash/(BUDGET*0.22)));
+  const hierPts=30*sim.hier.pct;
+  let score=Math.round(covPts+hierPts+effPts);
+  if(!win)score=Math.min(score,Math.round(covPts+hierPts));
+  const grade=score>=85?'A':score>=70?'B':score>=55?'C':score>=40?'D':'F';
+  const reasons=[];
+  for(const g of GOODS){const r=sim.goods[g.id];
+    reasons.push(`${g.name}: ${pct(r.coverage)} of people served by ${r.facs.length} facilit${r.facs.length===1?'y':'ies'}${r.failing.length?`, ${r.failing.length} below threshold`:''}.`);}
+  reasons.push(`Hierarchy: ${sim.hier.total?pct(sim.hier.pct):'no higher-order facilities'} of higher-order facilities sit on places that already have all lower-order goods.`);
+  reasons.push(`Cash left: ${money(state.cash)} of ${money(BUDGET)}.`);
+  return {win,score,grade,reasons,covs,failing,avgCov};
+}
+function hashCode(str){let h=2166136261;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619)>>>0;}return h.toString(36).toUpperCase().padStart(7,'0').slice(-7);}
+function verifyCode(name,date,mode,win,score){return hashCode(`${name.trim().toLowerCase()}|${date}|${mode}|${win?'W':'L'}|${score}`);}
+function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+
+let lastResult=null;
+$('submitBtn').addEventListener('click',async()=>{
+  const res=scoreGame();const date=today();
+  let snapshot=canvas;
+  if(arc&&arc.ready){
+    try{const shot=await arc.view.takeScreenshot({format:'png',width:1200});const img=new Image();img.src=shot.dataUrl;await img.decode();snapshot=img;}catch(e){snapshot=canvas;}
+  }
+  const code=verifyCode(state.name,date,state.mode,res.win,res.score);
+  lastResult={...res,date,code};
+  $('verdict').textContent=res.win?'You win':'Not yet';
+  $('verdict').className='verdict '+(res.win?'win':'loss');
+  const modeName=state.mode==='real'?'River valley':'Isotropic plain';
+  $('resultBody').innerHTML=`<p><b>${state.name||'Planner'}</b> · ${modeName} · ${date} · Score <b>${res.score}/100</b>, grade <b>${res.grade}</b></p>
+    <ul class="reasons">${res.reasons.map(r=>`<li>${r}</li>`).join('')}</ul>
+    <p class="status">${res.win?'Everyone has access to every good and nothing is going broke. Score is 30 points for coverage, 30 for hierarchy, 40 for cash left.':'To win, reach 95% coverage for all three goods with no facility below threshold. Close this window to keep building; you can inspect as often as you like.'}</p>
+    <p class="status">Verification code <code class="vc">${code}</code></p>`;
+  drawCard(res,date,code,modeName,snapshot);
+  $('summaryText').value=`Hexland result card\nName: ${state.name||'(no name)'}\nDate: ${date}\nLandscape: ${modeName}\nVerdict: ${res.win?'WIN':'LOSS (not yet)'}\nScore: ${res.score}/100 (${res.grade})\n${res.reasons.join('\n')}\nVerification code: ${code}`;
+  $('saveStatus').textContent='Or take a screenshot of this card.';
+  $('resultOverlay').classList.add('open');
+});
+
+function drawCard(res,date,code,modeName,snap){
+  const cv=$('cardCanvas'),c=cv.getContext('2d');const W=cv.width,H=cv.height;
+  c.setTransform(1,0,0,1,0,0);
+  c.fillStyle='#FFFFFF';c.fillRect(0,0,W,H);
+  c.fillStyle='#1B2430';
+  c.font='800 44px "Bricolage Grotesque",sans-serif';c.textBaseline='top';c.textAlign='left';
+  c.fillText('Hexland',40,34);
+  c.font='400 18px "Atkinson Hyperlegible",sans-serif';c.fillStyle='#5E6B78';
+  c.fillText('Central place theory result card',40,86);
+  c.fillStyle=res.win?'#1F8A7A':'#B8325A';c.font='800 64px "Bricolage Grotesque",sans-serif';c.textAlign='right';
+  c.fillText(res.win?'WIN':'LOSS',W-40,34);
+  c.textAlign='left';c.fillStyle='#1B2430';
+  c.font='700 22px "Atkinson Hyperlegible",sans-serif';c.fillText(state.name||'(no name entered)',40,130);
+  c.font='400 18px "Atkinson Hyperlegible",sans-serif';c.fillStyle='#5E6B78';
+  c.fillText(`${date}   ${modeName}   ${totalPop.toLocaleString('en-US')} people`,40,160);
+  c.fillStyle='#1B2430';c.font='800 40px "Bricolage Grotesque",sans-serif';c.fillText(`Score ${res.score}/100`,40,200);
+  c.font='700 22px "Atkinson Hyperlegible",sans-serif';c.fillText(`Grade ${res.grade}`,40,250);
+  // stats
+  let y=300;c.font='400 17px "Atkinson Hyperlegible",sans-serif';
+  const colors={bakery:'#D0901A',grocery:'#1F8A7A',hospital:'#B8325A'};
+  for(const g of GOODS){const r=sim.goods[g.id];
+    c.fillStyle=colors[g.id];c.beginPath();c.arc(48,y+9,7,0,Math.PI*2);c.fill();
+    c.fillStyle='#1B2430';c.fillText(`${g.name}: ${pct(r.coverage)} served, ${r.facs.length} built${r.failing.length?`, ${r.failing.length} failing`:''}`,66,y);y+=30;}
+  c.fillText(`Hierarchy: ${sim.hier.total?pct(sim.hier.pct):'–'}   Cash left: ${money(state.cash)}`,40,y);y+=30;
+  c.fillStyle='#5E6B78';c.fillText('Verification code',40,y+16);c.fillStyle='#1B2430';c.font='700 24px ui-monospace,Menlo,Consolas,monospace';c.fillText(code,190,y+12);
+  // map snapshot
+  const sw=snap.naturalWidth||snap.width,sh=snap.naturalHeight||snap.height;
+  const mx=W/2+10,my=116,mw=W/2-50,mh=H-146;const scale=Math.min((mw-12)/sw,(mh-12)/sh);
+  const dw=sw*scale,dh=sh*scale;
+  c.fillStyle='#F1F3EF';c.fillRect(mx,my,mw,mh);
+  c.drawImage(snap,mx+(mw-dw)/2,my+(mh-dh)/2,dw,dh);
+}
+
+$('copyBtn').addEventListener('click',async()=>{
+  const t=$('summaryText');t.focus();t.select();
+  try{await navigator.clipboard.writeText(t.value);$('saveStatus').textContent='Summary copied.';}
+  catch(e){try{document.execCommand('copy');$('saveStatus').textContent='Summary copied.';}catch(e2){$('saveStatus').textContent='Select the text below and copy it.';}}
+});
+
+$('saveBtn').addEventListener('click',()=>{
+  if(!lastResult)return;
+  const cv=$('cardCanvas');
+  const safe=(state.name||'planner').replace(/[^a-z0-9]+/gi,'-').toLowerCase();
+  cv.toBlob(blob=>{
+    if(!blob){$('saveStatus').textContent='Could not create the image. Take a screenshot instead.';return;}
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=`hexland-${safe}-${lastResult.date}.png`;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    $('saveStatus').textContent='Saved. Send the PNG to your teacher.';
+  },'image/png');
+});
+
+// teacher verification
+$('vBtn').addEventListener('click',()=>{
+  const n=$('vName').value,d=$('vDate').value.trim(),s=parseInt($('vScore').value,10);
+  if(!n||!d||isNaN(s)){$('vOut').textContent='Enter the name, date and score exactly as printed on the card.';return;}
+  const out=[];
+  for(const mode of ['iso','real'])for(const win of [true,false])out.push(`${mode==='iso'?'Isotropic plain':'River valley'}, ${win?'win':'loss'}: ${verifyCode(n,d,mode,win,s)}`);
+  $('vOut').innerHTML='A genuine card with those details shows one of these codes:<br>'+out.join('<br>');
+});
+
+// initial paint behind the start dialog
+startGame('', 'iso');
+})();
+</script>
+</body>
+</html>
